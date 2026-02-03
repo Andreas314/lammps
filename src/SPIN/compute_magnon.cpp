@@ -32,6 +32,7 @@
 
 #include <cstring>
 #include <complex>
+#include <stdio.h>
 using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
@@ -167,6 +168,34 @@ void ComputeMagnon::compute_array()
 }
 void ComputeMagnon::write_result()
 {
+  std::string preffix = "output-";
+  std::string suffix = ".csv";
+  std::string name = suffix + std::string(id) + preffix;
+  FILE *fp = fopen(name.c_str(), "w");
+  fprintf(fp, "coord,");
+  fprintf(fp, "k,");
+  fprintf(fp, "omega,");
+  for (int om = 0; om < nomegas - 1; om++)
+    fprintf(fp, "%f,", omegamin + om * omegastep);
+  fprintf(fp, "%f\n", omegamin + omegastep * (nomegas - 1));
+  for (int k = 0; k < knum * pointsnum; k++)
+  {
+    for (int coord = 0; coord < 3; coord++)
+    {
+      fprintf(fp, "%d,", coord);
+      fprintf(fp, "%f,", kdistances[k]);
+      fprintf(fp, "Re,");
+      for (int om = 0; om < nomegas - 1; om++)
+        fprintf(fp, "%f,", S_real[coord][om][k]);
+      fprintf(fp, "%f\n", S_real[coord][nomegas - 1][k]);
+      fprintf(fp, "%d,", coord);
+      fprintf(fp, "%f,", kdistances[k]);
+      fprintf(fp, "Im,");
+      for (int om = 0; om < nomegas - 1; om++)
+        fprintf(fp, "%f,", S_imag[coord][om][k]);
+      fprintf(fp, "%f\n", S_imag[coord][nomegas - 1][k]); 
+    }
+  }
 
 }
 void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
