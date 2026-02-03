@@ -39,6 +39,7 @@ class ComputeMagnon : public Compute {
   double ***spint;
   double **kpoints, **kvecs;
   char **knames;
+  char *id;
   double *kdistances;
 };
 

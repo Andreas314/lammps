@@ -37,13 +37,16 @@ using namespace LAMMPS_NS;
 
 ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
 {
-  //if (narg % 4 != 0 || narg < 11 ) error->all(FLERR, 1, "Wrong number of arguments");
+  if (narg % 4 != 3 || narg < 15 ) error->all(FLERR, 1, "Wrong number of arguments");
   //TODO: errors on omegas, knum;
-  omegamin = atof(arg[0]);
-  omegastep = atof(arg[1]);
-  omegamax = atof(arg[2]);
-  knum = atoi(arg[3]);
-  pointsnum = narg / 4 - 1;
+  id = arg[0];
+  int newnarg = narg - 3;
+  char **newarg = arg + 3;
+  omegamin = atof(newarg[0]);
+  omegastep = atof(newarg[1]);
+  omegamax = atof(newarg[2]);
+  knum = atoi(newarg[3]);
+  pointsnum = newnarg / 4 - 1;
   tsize = 200;
   lmp->memory->create(kpoints, pointsnum, 3, "magnon:kpoints");
   lmp->memory->create(kdistances, pointsnum * knum, "magnon:kdistance");
@@ -53,12 +56,12 @@ ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, n
   timestep = 0;
   int argnum = 0;
   int i = 0;
-  while (argnum < (narg - 4) ){
+  while (argnum < (newnarg - 4) ){
 	  //TODO: Names of points with one char
-  	strcpy(knames[i], arg[argnum]);
-	kpoints[i][0] = atof(arg[argnum + 1]);
-	kpoints[i][1] = atof(arg[argnum + 2]);
-	kpoints[i][2] = atof(arg[argnum + 3]);
+  	strcpy(knames[i], newarg[4 + argnum]);
+	kpoints[i][0] = atof(newarg[4 + argnum + 1]);
+	kpoints[i][1] = atof(newarg[4 + argnum + 2]);
+	kpoints[i][2] = atof(newarg[4 + argnum + 3]);
 	i++;
 	argnum += 4;
   }
@@ -84,20 +87,20 @@ void ComputeMagnon::create_path()
   {
     point1 = kpoints[point - 1];
     point2 = kpoints[point];
-    dist[0] = (point2[0] - point1[0]) / knum;
-    dist[1] = (point2[1] - point1[1]) / knum;
-    dist[2] = (point2[2] - point1[2]) / knum;
+    dist[0] = (point2[0] - point1[0]) / (double)(knum);
+    dist[1] = (point2[1] - point1[1]) / (double)(knum);
+    dist[2] = (point2[2] - point1[2]) / (double)(knum);
     double ds = std::sqrt(dist[0]*dist[0] +
 			  dist[1]*dist[1] +
 			  dist[2]*dist[2]);
-    for (int distance = 0; distance < knum; distance++)
+    for (int distance = 0; distance <= knum; distance++)
     {
       int indx = distance + (point - 1) * knum;
       if (point == 1 && distance == 0) kdistances[0] = 0;
       else kdistances[indx] = kdistances[indx - 1] + ds;
       kvecs[indx][0] = point1[0] + dist[0] * distance; 
       kvecs[indx][1] = point1[1] + dist[1] * distance; 
-      kvecs[indx][2] = point1[2] + dist[2] * distance; 
+      kvecs[indx][2] = point1[2] + dist[2] * distance;
     }
   }
 }
