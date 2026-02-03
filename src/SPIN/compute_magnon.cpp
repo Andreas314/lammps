@@ -15,6 +15,7 @@
 
 #include "angle.h"
 #include "atom.h"
+#include "comm.h"
 #include "atom_masks.h"
 #include "bond.h"
 #include "dihedral.h"
@@ -36,13 +37,32 @@ using namespace LAMMPS_NS;
 
 ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
 {
-  if (narg % 4 != 3 || narg < 10 ) error->all(FLERR, 1, "Wrong number of arguments");
+  //if (narg % 4 != 0 || narg < 11 ) error->all(FLERR, 1, "Wrong number of arguments");
+  //TODO: errors on omegas, knum;
   omegamin = atof(arg[0]);
   omegastep = atof(arg[1]);
   omegamax = atof(arg[2]);
-  lmp->memory->create(kpoints, narg / 4, 3, "magnon:kpoints");
-  lmp->memory->create(kdistances, narg / 4, "magnon:kdistance");
-  lmp->memory->create(knames, narg / 4, 1, "magnon:knames");
+  knum = atoi(arg[3]);
+  pointsnum = narg / 4 - 1;
+  tsize = 200;
+  lmp->memory->create(kpoints, pointsnum, 3, "magnon:kpoints");
+  lmp->memory->create(kdistances, pointsnum * knum, "magnon:kdistance");
+  lmp->memory->create(kvecs, pointsnum * knum, 3, "magnon:kvecs");
+  lmp->memory->create(knames, pointsnum, 1, "magnon:knames");
+  lmp->memory->create(spint, tsize, atom->nlocal, 3, "magnon:spint");
+  timestep = 0;
+  int argnum = 0;
+  int i = 0;
+  while (argnum < (narg - 4) ){
+	  //TODO: Names of points with one char
+  	strcpy(knames[i], arg[argnum]);
+	kpoints[i][0] = atof(arg[argnum + 1]);
+	kpoints[i][1] = atof(arg[argnum + 2]);
+	kpoints[i][2] = atof(arg[argnum + 3]);
+	i++;
+	argnum += 4;
+  }
+  create_path();
   datamask_read = EMPTY_MASK;
   datamask_modify = EMPTY_MASK;
 }
@@ -50,16 +70,51 @@ ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, n
 /* ---------------------------------------------------------------------- */
 ComputeMagnon::~ComputeMagnon()
 {
-	lmp->memory->destroy(kpoints);
-	lmp->memory->destroy(kdistances);
-	lmp->memory->destroy(knames);
+  lmp->memory->destroy(kpoints);
+  lmp->memory->destroy(kvecs);
+  lmp->memory->destroy(kdistances);
+  lmp->memory->destroy(knames);
+  lmp->memory->destroy(spint);
 }
-
+void ComputeMagnon::create_path()
+{
+  double *point1, *point2;
+  double dist[3];
+  for (int point = 1; point < pointsnum; point++)
+  {
+    point1 = kpoints[point - 1];
+    point2 = kpoints[point];
+    dist[0] = (point2[0] - point1[0]) / knum;
+    dist[1] = (point2[1] - point1[1]) / knum;
+    dist[2] = (point2[2] - point1[2]) / knum;
+    double ds = std::sqrt(dist[0]*dist[0] +
+			  dist[1]*dist[1] +
+			  dist[2]*dist[2]);
+    for (int distance = 0; distance < knum; distance++)
+    {
+      int indx = distance + (point - 1) * knum;
+      if (point == 1 && distance == 0) kdistances[0] = 0;
+      else kdistances[indx] = kdistances[indx - 1] + ds;
+      kvecs[indx][0] = point1[0] + dist[0] * distance; 
+      kvecs[indx][1] = point1[1] + dist[1] * distance; 
+      kvecs[indx][2] = point1[2] + dist[2] * distance; 
+    }
+  }
+}
 void ComputeMagnon::compute_local()
 {
-
-}
+  if (timestep > tsize)
+  {
+    tsize += 10;
+    memory->grow(spint, tsize, atom->nlocal, 3, "magnon:spint");
+  }
+  for (int i = 0; i < atom->nlocal; i++)
+  {
+    spint[timestep][i][0] = atom->sp[i][0];
+    spint[timestep][i][1] = atom->sp[i][1];
+    spint[timestep][i][2] = atom->sp[i][2];
+  }
+ }
 void ComputeMagnon::compute_array()
 {
-
 }

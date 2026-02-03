@@ -74,7 +74,7 @@ class FixNVESpin : public Fix {
 
   int nlangspin;
   class FixLangevinSpin **locklangevinspin;
-  class Compute *computemagnon;
+  std::vector<class Compute *> computemagnon;
   // pointers to fix setforce/spin styles
 
   int nsetspin;

@@ -146,12 +146,13 @@ int FixNVESpin::setmask()
   mask |= INITIAL_INTEGRATE;
   mask |= PRE_NEIGHBOR;
   mask |= FINAL_INTEGRATE;
-  computemagnon = modify->get_compute_by_id("spin/magnon");
-  if ( computemagnon != nullptr)
+  computemagnon = modify->get_compute_by_style("spin/magnon");
+  if (!computemagnon.empty())
   {
-  	mask |= END_OF_STEP ;
-  	mask |= POST_RUN ;
-	computemagnon->compute_local();
+    mask |= END_OF_STEP ;
+    mask |= POST_RUN ;
+    for (auto &magnon: computemagnon)
+      magnon->compute_local();
   }
   return mask;
 }
@@ -740,10 +741,12 @@ void FixNVESpin::final_integrate()
 
 void FixNVESpin::end_of_step()
 {
-	computemagnon->compute_local();
+  for (auto &magnon: computemagnon)
+    magnon->compute_local();
 }
 
 void FixNVESpin::post_run()
 {
-	computemagnon->compute_array();
+  for (auto &magnon: computemagnon)
+    magnon->compute_array();
 }
