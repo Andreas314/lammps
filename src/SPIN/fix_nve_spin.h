@@ -34,6 +34,9 @@ class FixNVESpin : public Fix {
   void init() override;
   void initial_integrate(int) override;
   void final_integrate() override;
+  //for magnon run
+  void end_of_step() override;
+  void post_run() override;
 
   void ComputeInteractionsSpin(int);    // compute and advance single spin functions
   void AdvanceSingleSpin(int);
@@ -67,12 +70,11 @@ class FixNVESpin : public Fix {
   int npairs, npairspin;    // # of pairs, and # of spin pairs
   class Pair *pair;
   class PairSpin **spin_pairs;    // vector of spin pairs
-
   // pointers to fix langevin/spin styles
 
   int nlangspin;
   class FixLangevinSpin **locklangevinspin;
-
+  class Compute *computemagnon;
   // pointers to fix setforce/spin styles
 
   int nsetspin;

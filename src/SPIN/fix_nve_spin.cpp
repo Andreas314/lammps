@@ -38,6 +38,7 @@
 #include "pair_hybrid.h"
 #include "pair_spin.h"
 #include "update.h"
+#include "compute_magnon.h"
 
 #include <cstring>
 
@@ -145,6 +146,13 @@ int FixNVESpin::setmask()
   mask |= INITIAL_INTEGRATE;
   mask |= PRE_NEIGHBOR;
   mask |= FINAL_INTEGRATE;
+  computemagnon = modify->get_compute_by_id("spin/magnon");
+  if ( computemagnon != nullptr)
+  {
+  	mask |= END_OF_STEP ;
+  	mask |= POST_RUN ;
+	computemagnon->compute_local();
+  }
   return mask;
 }
 
@@ -728,4 +736,14 @@ void FixNVESpin::final_integrate()
     }
   }
 
+}
+
+void FixNVESpin::end_of_step()
+{
+	computemagnon->compute_local();
+}
+
+void FixNVESpin::post_run()
+{
+	computemagnon->compute_array();
 }
