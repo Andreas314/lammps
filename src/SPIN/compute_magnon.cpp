@@ -170,7 +170,7 @@ void ComputeMagnon::write_result()
 {
   std::string preffix = "output-";
   std::string suffix = ".csv";
-  std::string name = suffix + std::string(id) + preffix;
+  std::string name = preffix + std::string(id) + suffix;
   FILE *fp = fopen(name.c_str(), "w");
   fprintf(fp, "coord,");
   fprintf(fp, "k,");
