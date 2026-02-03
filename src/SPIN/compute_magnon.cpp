@@ -154,11 +154,13 @@ void ComputeMagnon::compute_array()
   }
   //MPI reduction over ranks
   MPI_Comm world = lmp->world;
-  MPI_Allreduce(MPI_IN_PLACE, S_real, 
-		3 * nomegas * knum * pointsnum,
+  double *p = &S_real[0][0][0];
+  MPI_Allreduce(MPI_IN_PLACE, p, 
+  		3 * nomegas * knum * pointsnum,
                 MPI_DOUBLE, MPI_SUM, world);
-  MPI_Allreduce(MPI_IN_PLACE, S_imag, 
-		3 * nomegas * knum * pointsnum,
+  p = &S_imag[0][0][0];
+  MPI_Allreduce(MPI_IN_PLACE, p, 
+  		3 * nomegas * knum * pointsnum,
                 MPI_DOUBLE, MPI_SUM, world);
   //only rank 0 writes to the file
   if (comm->me == 0) write_result();
@@ -232,6 +234,7 @@ void ComputeMagnon::compute_C(int i, int j, int comp)
 }
 void ComputeMagnon::calculate_reciprocal()
 {
+    
     //TODO:Cooking of ChatGPT, check if correct
     double *a1 = domain->lattice->a1;
     double *a2 = domain->lattice->a2;

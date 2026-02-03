@@ -45,7 +45,8 @@ class ComputeMagnon : public Compute {
   double **kpoints, **kvecs;
   char **knames;
   char *id;
-  double *kdistances, *C, *C_omega_real, *C_omega_imag, *b1, *b2, *b3;
+  double *kdistances, *C, *C_omega_real, *C_omega_imag;
+  double b1[3], b2[3], b3[3];
 };
 
 }    // namespace LAMMPS_NS
