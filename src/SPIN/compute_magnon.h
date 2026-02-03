@@ -34,14 +34,18 @@ class ComputeMagnon : public Compute {
 
  private:
   void create_path();
-  void compute_C();
-  int knum, pointsnum, timestep, tsize;
+  void write_result();
+  void calculate_S_entry(int omega, int k, int comp);
+  void transform_C();
+  void compute_C(int i, int j, int comp);
+  void calculate_reciprocal();
+  int knum, pointsnum, timestep, tsize, nomegas;
   double omegamax, omegamin, omegastep;
-  double ***spint;
-  double **kpoints, **kvecs, **S, **C;
+  double ***spint, ***S_real, ***S_imag;
+  double **kpoints, **kvecs;
   char **knames;
   char *id;
-  double *kdistances;
+  double *kdistances, *C, *C_omega_real, *C_omega_imag, *b1, *b2, *b3;
 };
 
 }    // namespace LAMMPS_NS
