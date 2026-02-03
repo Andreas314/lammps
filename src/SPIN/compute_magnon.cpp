@@ -113,6 +113,7 @@ void ComputeMagnon::create_path()
 }
 void ComputeMagnon::compute_local()
 {
+  //Accumulate spins of all the atoms in each time frame
   if (timestep > tsize)
   {
     tsize += 10;
@@ -137,6 +138,7 @@ void ComputeMagnon::compute_array()
   memory->create(S_imag, 3, nomegas, knum * pointsnum, "magnon:S_imag");
   //correletation function
   memory->create(C, 3 * timestep / 4, "magnon:C");
+  //correletation function in frequency domain
   memory->create(C_omega_real, nomegas, "magnon:C_omega_real");
   memory->create(C_omega_imag, nomegas, "magnon:C_omega_imag");
   //Actual calculation
@@ -168,6 +170,7 @@ void ComputeMagnon::compute_array()
 }
 void ComputeMagnon::write_result()
 {
+  //output to file
   std::string preffix = "output-";
   std::string suffix = ".csv";
   std::string name = preffix + std::string(id) + suffix;
@@ -205,10 +208,14 @@ void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
   {
     for (int j = 0; j < atom->nmax; j++)
     {
+      //compute the correletation function
       compute_C(i, j, comp);
+      //transform the correletation function to frequency domain
       transform_C();
       double* qnounits = kvecs[k];
       double x, q, sum = 0;
+      //calculation of sums over distances of atoms
+      //this is x \dot q
       for (int xx = 0; xx < 3; xx++)
       {
         x = atom->x[i][xx] - atom->x[j][xx];
@@ -217,11 +224,14 @@ void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
 	q += qnounits[2] * b3[xx];
 	sum += x * 1;
       }
-      std::complex<double> z = std::exp(I * q);
+      //factor inside the sum
+      std::complex<double> z = std::exp(I * sum);
+      //accumulation of sum
       S_real[comp][omega][k] += z.real() * C_omega_real[omega] - z.imag() * C_omega_imag[omega];
       S_imag[comp][omega][k] += z.real() * C_omega_imag[omega] + z.imag() * C_omega_real[omega];
     }
   }
+  //normalization
   S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nlocal);
 }
 
@@ -233,6 +243,7 @@ void ComputeMagnon::transform_C()
     double omega = omegamin + omegastep * j;
     C_omega_real[j] = 0.0;
     C_omega_imag[j] = 0.0;
+
     for (int t = 0; t < 3 * timestep / 4; t++)
     {
       std::complex<double> z = std::exp(I *(update->dt * t) * omega ) * C[t] * update->dt;
@@ -249,6 +260,7 @@ void ComputeMagnon::compute_C(int i, int j, int comp)
     double sisj = 0.0;
     double si = 0.0;
     double sj = 0.0;
+    //mean value of spins
     for (int t = tau; t < timestep; t++)
     {
       sisj += spint[t + tau][i][comp] * spint[t][j][comp];
@@ -265,6 +277,7 @@ void ComputeMagnon::calculate_reciprocal()
 {
     
     //TODO:Cooking of ChatGPT, check if correct
+    //Calculates reciprocal vectors, because LAMMPS doesnt store them
     double *a1 = domain->lattice->a1;
     double *a2 = domain->lattice->a2;
     double *a3 = domain->lattice->a3;
