@@ -34,10 +34,11 @@ class ComputeMagnon : public Compute {
 
  private:
   void create_path();
+  void compute_C();
   int knum, pointsnum, timestep, tsize;
   double omegamax, omegamin, omegastep;
   double ***spint;
-  double **kpoints, **kvecs;
+  double **kpoints, **kvecs, **S, **C;
   char **knames;
   char *id;
   double *kdistances;

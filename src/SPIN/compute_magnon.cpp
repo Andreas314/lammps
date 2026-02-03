@@ -52,7 +52,7 @@ ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, n
   lmp->memory->create(kdistances, pointsnum * knum, "magnon:kdistance");
   lmp->memory->create(kvecs, pointsnum * knum, 3, "magnon:kvecs");
   lmp->memory->create(knames, pointsnum, 1, "magnon:knames");
-  lmp->memory->create(spint, tsize, atom->nlocal, 3, "magnon:spint");
+  lmp->memory->create(spint, tsize, atom->nmax, 3, "magnon:spint");
   timestep = 0;
   int argnum = 0;
   int i = 0;
@@ -78,6 +78,8 @@ ComputeMagnon::~ComputeMagnon()
   lmp->memory->destroy(kdistances);
   lmp->memory->destroy(knames);
   lmp->memory->destroy(spint);
+  lmp->memory->destroy(S);
+  lmp->memory->destroy(C);
 }
 void ComputeMagnon::create_path()
 {
@@ -109,15 +111,31 @@ void ComputeMagnon::compute_local()
   if (timestep > tsize)
   {
     tsize += 10;
-    memory->grow(spint, tsize, atom->nlocal, 3, "magnon:spint");
+    memory->grow(spint, tsize, atom->nmax, 3, "magnon:spint");
   }
-  for (int i = 0; i < atom->nlocal; i++)
+  for (int i = 0; i < atom->nmax; i++)
   {
     spint[timestep][i][0] = atom->sp[i][0];
     spint[timestep][i][1] = atom->sp[i][1];
     spint[timestep][i][2] = atom->sp[i][2];
   }
+  timestep++;
  }
 void ComputeMagnon::compute_array()
 {
+  //substarct extra step, gives us size of the array
+  timestep-=1;
+
+  double dt = update->dt;
+  int nomegas = std::ceil((omegamax - omegamin) / omegastep);
+  //magnons
+  memory->create(S, nomegas, knum * pointsnum, "magnon:S");
+  //correletation function
+  memory->create(C,atom->nlocal,  timestep, "magnon:C");
+  compute_C();
+}
+void ComputeMagnon::compute_C()
+{
+
+
 }
