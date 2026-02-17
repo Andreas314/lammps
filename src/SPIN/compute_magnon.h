@@ -39,7 +39,7 @@ class ComputeMagnon : public Compute {
   void transform_C();
   void compute_C(int i, int j, int comp);
   void calculate_reciprocal();
-  int knum, pointsnum, timestep, tsize, nomegas;
+  int knum, pointsnum, timestep, tsize, nomegas, m_max;
   double omegamax, omegamin, omegastep;
   double ***spint, ***S_real, ***S_imag;
   double **kpoints, **kvecs;
@@ -47,6 +47,7 @@ class ComputeMagnon : public Compute {
   char *id;
   double *kdistances, *C, *C_omega_real, *C_omega_imag;
   double b1[3], b2[3], b3[3];
+  bool compute_fix = false;
 };
 
 }    // namespace LAMMPS_NS

@@ -10,7 +10,7 @@
 
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
-
+#define PLANC 6.582119569*std::pow(10,-16)
 #include "compute_magnon.h"
 
 #include "angle.h"
@@ -54,7 +54,6 @@ ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, n
   lmp->memory->create(kdistances, pointsnum * knum, "magnon:kdistance");
   lmp->memory->create(kvecs, pointsnum * knum, 3, "magnon:kvecs");
   lmp->memory->create(knames, pointsnum, 1, "magnon:knames");
-  lmp->memory->create(spint, tsize, atom->nmax, 3, "magnon:spint");
   timestep = 0;
   int argnum = 0;
   int i = 0;
@@ -80,11 +79,14 @@ ComputeMagnon::~ComputeMagnon()
   lmp->memory->destroy(kdistances);
   lmp->memory->destroy(knames);
   lmp->memory->destroy(spint);
+  if (compute_fix)
+  {
   lmp->memory->destroy(C);
   lmp->memory->destroy(C_omega_real);
   lmp->memory->destroy(C_omega_imag);
   lmp->memory->destroy(S_real);
   lmp->memory->destroy(S_imag);
+  }
 }
 void ComputeMagnon::create_path()
 {
@@ -113,13 +115,13 @@ void ComputeMagnon::create_path()
 }
 void ComputeMagnon::compute_local()
 {
-  //Accumulate spins of all the atoms in each time frame
-  if (timestep > tsize)
+  if (timestep == 0)
   {
-    tsize += 10;
-    memory->grow(spint, tsize, atom->nmax, 3, "magnon:spint");
+    compute_fix = true;
+    lmp->memory->create(spint, update->nsteps, atom->nlocal, 3, "magnon:spint");
   }
-  for (int i = 0; i < atom->nmax; i++)
+  //Accumulate spins of all the atoms in each time frame
+  for (int i = 0; i < atom->nlocal; i++)
   {
     spint[timestep][i][0] = atom->sp[i][0];
     spint[timestep][i][1] = atom->sp[i][1];
@@ -129,15 +131,15 @@ void ComputeMagnon::compute_local()
  }
 void ComputeMagnon::compute_array()
 {
+  m_max = update->nsteps / 10;
   //substarct extra step, gives us size of the array
-  timestep-=1;
 
   nomegas = std::ceil((omegamax - omegamin) / omegastep);
   //magnons
   memory->create(S_real, 3, nomegas, knum * pointsnum, "magnon:S_real");
   memory->create(S_imag, 3, nomegas, knum * pointsnum, "magnon:S_imag");
   //correletation function
-  memory->create(C, 3 * timestep / 4, "magnon:C");
+  memory->create(C, update->nsteps - m_max, "magnon:C");
   //correletation function in frequency domain
   memory->create(C_omega_real, nomegas, "magnon:C_omega_real");
   memory->create(C_omega_imag, nomegas, "magnon:C_omega_imag");
@@ -145,6 +147,7 @@ void ComputeMagnon::compute_array()
   calculate_reciprocal();
   for (int omega = 0; omega < nomegas; omega++)
   {
+    printf("%d\n", omega);
     for (int k = 0; k < knum * pointsnum; k++)
     {
       for (int comp = 0; comp < 3; comp++)
@@ -206,7 +209,7 @@ void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
   std::complex<double> I{0.0, 1.0};
   for (int i = 0; i < atom->nlocal; i++)
   {
-    for (int j = 0; j < atom->nmax; j++)
+    for (int j = i; j < atom->nlocal; j++)
     {
       //compute the correletation function
       compute_C(i, j, comp);
@@ -225,14 +228,19 @@ void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
 	sum += x * 1;
       }
       //factor inside the sum
-      std::complex<double> z = std::exp(I * sum);
+      std::complex<double> z;
+      if (j < atom->nlocal)
+      	z = (std::exp(I * sum) + std::exp(-I * sum));
+      else
+      	z = std::exp(I * sum);
       //accumulation of sum
       S_real[comp][omega][k] += z.real() * C_omega_real[omega] - z.imag() * C_omega_imag[omega];
       S_imag[comp][omega][k] += z.real() * C_omega_imag[omega] + z.imag() * C_omega_real[omega];
     }
   }
   //normalization
-  S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nlocal);
+  S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nmax);
+  S_imag[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nmax);
 }
 
 void ComputeMagnon::transform_C()
@@ -241,10 +249,11 @@ void ComputeMagnon::transform_C()
   for (int j = 0; j < nomegas; j++)
   {
     double omega = omegamin + omegastep * j;
+    omega /= PLANC;
     C_omega_real[j] = 0.0;
     C_omega_imag[j] = 0.0;
 
-    for (int t = 0; t < 3 * timestep / 4; t++)
+    for (int t = 0; t < update->ntimestep - m_max; t++)
     {
       std::complex<double> z = std::exp(I *(update->dt * t) * omega ) * C[t] * update->dt;
       C_omega_real[j] += z.real();
@@ -255,21 +264,21 @@ void ComputeMagnon::transform_C()
 
 void ComputeMagnon::compute_C(int i, int j, int comp)
 {
-  for (int tau = 0; tau < 3 * timestep / 4; tau++)
+  for (int tau = 0; tau < update->ntimestep - m_max; tau++)
   {
     double sisj = 0.0;
     double si = 0.0;
     double sj = 0.0;
     //mean value of spins
-    for (int t = tau; t < timestep; t++)
+    for (int t = 0; t < m_max; t++)
     {
       sisj += spint[t + tau][i][comp] * spint[t][j][comp];
       si += spint[t + tau][i][comp];
       sj += spint[t][j][comp];
     }
-    sisj /=  (double)(timestep - tau);
-    si /= (double)(timestep - tau);
-    sj /= (double)(timestep - tau);
+    sisj /=  (double)(m_max);
+    si /= (double)(m_max);
+    sj /= (double)(m_max);
     C[tau] = sisj - si * sj;
   }
 }

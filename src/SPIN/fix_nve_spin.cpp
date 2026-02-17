@@ -151,8 +151,8 @@ int FixNVESpin::setmask()
   {
     mask |= END_OF_STEP ;
     mask |= POST_RUN ;
-    for (auto &magnon: computemagnon)
-      magnon->compute_local();
+  //for (auto &magnon: computemagnon)
+  //    magnon->compute_local();
   }
   return mask;
 }
