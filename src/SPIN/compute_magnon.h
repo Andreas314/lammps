@@ -35,7 +35,7 @@ class ComputeMagnon : public Compute {
  private:
   void create_path();
   void write_result();
-  void calculate_S_entry(int omega, int k, int comp);
+  void calculate_S_entry(int k, int comp);
   void transform_C();
   void compute_C(int i, int j, int comp);
   void calculate_reciprocal();

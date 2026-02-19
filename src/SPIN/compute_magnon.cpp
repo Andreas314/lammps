@@ -49,7 +49,6 @@ ComputeMagnon::ComputeMagnon(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, n
   omegamax = atof(newarg[2]);
   knum = atoi(newarg[3]);
   pointsnum = newnarg / 4 - 1;
-  tsize = 200;
   lmp->memory->create(kpoints, pointsnum, 3, "magnon:kpoints");
   lmp->memory->create(kdistances, pointsnum * knum, "magnon:kdistance");
   lmp->memory->create(kvecs, pointsnum * knum, 3, "magnon:kvecs");
@@ -129,48 +128,7 @@ void ComputeMagnon::compute_local()
   }
   timestep++;
  }
-void ComputeMagnon::compute_array()
-{
-  m_max = update->nsteps / 10;
-  //substarct extra step, gives us size of the array
 
-  nomegas = std::ceil((omegamax - omegamin) / omegastep);
-  //magnons
-  memory->create(S_real, 3, nomegas, knum * pointsnum, "magnon:S_real");
-  memory->create(S_imag, 3, nomegas, knum * pointsnum, "magnon:S_imag");
-  //correletation function
-  memory->create(C, update->nsteps - m_max, "magnon:C");
-  //correletation function in frequency domain
-  memory->create(C_omega_real, nomegas, "magnon:C_omega_real");
-  memory->create(C_omega_imag, nomegas, "magnon:C_omega_imag");
-  //Actual calculation
-  calculate_reciprocal();
-  for (int omega = 0; omega < nomegas; omega++)
-  {
-    printf("%d\n", omega);
-    for (int k = 0; k < knum * pointsnum; k++)
-    {
-      for (int comp = 0; comp < 3; comp++)
-      {
-        S_imag[comp][omega][k] = 0.0;
-        S_real[comp][omega][k] = 0.0;
-        calculate_S_entry(omega, k, comp);
-      }
-    }
-  }
-  //MPI reduction over ranks
-  MPI_Comm world = lmp->world;
-  double *p = &S_real[0][0][0];
-  MPI_Allreduce(MPI_IN_PLACE, p, 
-  		3 * nomegas * knum * pointsnum,
-                MPI_DOUBLE, MPI_SUM, world);
-  p = &S_imag[0][0][0];
-  MPI_Allreduce(MPI_IN_PLACE, p, 
-  		3 * nomegas * knum * pointsnum,
-                MPI_DOUBLE, MPI_SUM, world);
-  //only rank 0 writes to the file
-  if (comm->me == 0) write_result();
-}
 void ComputeMagnon::write_result()
 {
   //output to file
@@ -178,38 +136,97 @@ void ComputeMagnon::write_result()
   std::string suffix = ".csv";
   std::string name = preffix + std::string(id) + suffix;
   FILE *fp = fopen(name.c_str(), "w");
-  fprintf(fp, "coord,");
-  fprintf(fp, "k,");
-  fprintf(fp, "omega,");
+  fprintf(fp, "k/omega,");
   for (int om = 0; om < nomegas - 1; om++)
     fprintf(fp, "%f,", omegamin + om * omegastep);
   fprintf(fp, "%f\n", omegamin + omegastep * (nomegas - 1));
-  for (int k = 0; k < knum * pointsnum; k++)
+  for (int k = 0; k <= knum * (pointsnum - 1); k++)
   {
-    for (int coord = 0; coord < 3; coord++)
+    fprintf(fp, "%f,", kdistances[k]);
+    for (int om = 0; om < nomegas; om++)
     {
-      fprintf(fp, "%d,", coord);
-      fprintf(fp, "%f,", kdistances[k]);
-      fprintf(fp, "Re,");
-      for (int om = 0; om < nomegas - 1; om++)
-        fprintf(fp, "%f,", S_real[coord][om][k]);
-      fprintf(fp, "%f\n", S_real[coord][nomegas - 1][k]);
-      fprintf(fp, "%d,", coord);
-      fprintf(fp, "%f,", kdistances[k]);
-      fprintf(fp, "Im,");
-      for (int om = 0; om < nomegas - 1; om++)
-        fprintf(fp, "%f,", S_imag[coord][om][k]);
-      fprintf(fp, "%f\n", S_imag[coord][nomegas - 1][k]); 
+      double S = 0;
+      for (int coord = 0; coord < 3; coord++)
+      {
+	      S += (S_real[coord][om][k] * S_real[coord][om][k] + 
+	           S_imag[coord][om][k] * S_imag[coord][om][k]);
+      }
+      fprintf(fp, "%f,", std::sqrt(S));
+    }
+    fprintf(fp, "\n");
+  }
+}
+
+void ComputeMagnon::compute_array()
+{
+  m_max = update->nsteps / 10;
+  //substarct extra step, gives us size of the array
+
+  nomegas = std::ceil((omegamax - omegamin) / omegastep);
+  //magnons
+  memory->create(S_real, 3, nomegas, knum * (pointsnum-1), "magnon:S_real");
+  memory->create(S_imag, 3, nomegas, knum * (pointsnum-1), "magnon:S_imag");
+  //correletation function
+  memory->create(C, update->nsteps - m_max, "magnon:C");
+  //correletation function in frequency domain
+  memory->create(C_omega_real, nomegas, "magnon:C_omega_real");
+  memory->create(C_omega_imag, nomegas, "magnon:C_omega_imag");
+  //Actual calculation
+  calculate_reciprocal();
+  //SET EVERYTHING TO ZERO
+  for (int k = 0; k < knum * (pointsnum - 1); k++)
+  {
+    for (int comp = 0; comp < 3; comp++)
+    {
+      for (int omega = 0; omega < nomegas; omega++)
+      {
+        S_real[comp][omega][k] = 0;
+        S_imag[comp][omega][k] = 0;
+      }
+    }
+  }
+  //CALCULATE THE TENSOR
+  for (int k = 0; k < knum * (pointsnum - 1); k++)
+  {
+    printf("%d\n", k);
+    for (int comp = 0; comp < 3; comp++)
+    {
+      calculate_S_entry(k, comp);
+    }
+  }
+  //NORMALIZE
+  for (int k = 0; k < knum * (pointsnum - 1); k++)
+  {
+    for (int comp = 0; comp < 3; comp++)
+    {
+      for (int omega = 0; omega < nomegas; omega++)
+      {
+        S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nlocal);
+        S_imag[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nlocal);
+      }
     }
   }
 
+  //MPI reduction over ranks
+//  MPI_Comm world = lmp->world;
+//  double *p = &S_real[0][0][0];
+//  MPI_Allreduce(MPI_IN_PLACE, p, 
+//  		3 * nomegas * knum * pointsnum,
+//                MPI_DOUBLE, MPI_SUM, world);
+//  p = &S_imag[0][0][0];
+//  MPI_Allreduce(MPI_IN_PLACE, p, 
+//  		3 * nomegas * knum * pointsnum,
+//                MPI_DOUBLE, MPI_SUM, world);
+//  //only rank 0 writes to the file
+  if (comm->me == 0) write_result();
 }
-void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
+
+void ComputeMagnon::calculate_S_entry(int k, int comp)
 {
   std::complex<double> I{0.0, 1.0};
   for (int i = 0; i < atom->nlocal; i++)
   {
-    for (int j = i; j < atom->nlocal; j++)
+    for (int j = 0; j < atom->nlocal; j++)
     {
       //compute the correletation function
       compute_C(i, j, comp);
@@ -225,22 +242,20 @@ void ComputeMagnon::calculate_S_entry(int omega, int k, int comp)
 	q = qnounits[0] * b1[xx];
 	q += qnounits[1] * b2[xx];
 	q += qnounits[2] * b3[xx];
-	sum += x * 1;
+	sum += x * q;
       }
       //factor inside the sum
       std::complex<double> z;
-      if (j < atom->nlocal)
-      	z = (std::exp(I * sum) + std::exp(-I * sum));
-      else
-      	z = std::exp(I * sum);
+      z = (std::exp(I * sum));
       //accumulation of sum
-      S_real[comp][omega][k] += z.real() * C_omega_real[omega] - z.imag() * C_omega_imag[omega];
-      S_imag[comp][omega][k] += z.real() * C_omega_imag[omega] + z.imag() * C_omega_real[omega];
+      for (int omega = 0; omega < nomegas; omega++)
+        {
+          S_real[comp][omega][k] += (z.real() * C_omega_real[omega] - z.imag() * C_omega_imag[omega]);
+          S_imag[comp][omega][k] += z.real() * C_omega_imag[omega] + z.imag() * C_omega_real[omega];
+	}
     }
   }
   //normalization
-  S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nmax);
-  S_imag[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nmax);
 }
 
 void ComputeMagnon::transform_C()
@@ -249,11 +264,10 @@ void ComputeMagnon::transform_C()
   for (int j = 0; j < nomegas; j++)
   {
     double omega = omegamin + omegastep * j;
-    omega /= PLANC;
+    omega /= (PLANC * (double)std::pow(10, 12));
     C_omega_real[j] = 0.0;
     C_omega_imag[j] = 0.0;
-
-    for (int t = 0; t < update->ntimestep - m_max; t++)
+    for (int t = 0; t < timestep - m_max; t++)
     {
       std::complex<double> z = std::exp(I *(update->dt * t) * omega ) * C[t] * update->dt;
       C_omega_real[j] += z.real();
@@ -264,7 +278,7 @@ void ComputeMagnon::transform_C()
 
 void ComputeMagnon::compute_C(int i, int j, int comp)
 {
-  for (int tau = 0; tau < update->ntimestep - m_max; tau++)
+  for (int tau = 0; tau < timestep - m_max; tau++)
   {
     double sisj = 0.0;
     double si = 0.0;
@@ -287,11 +301,20 @@ void ComputeMagnon::calculate_reciprocal()
     
     //TODO:Cooking of ChatGPT, check if correct
     //Calculates reciprocal vectors, because LAMMPS doesnt store them
-    double *a1 = domain->lattice->a1;
-    double *a2 = domain->lattice->a2;
-    double *a3 = domain->lattice->a3;
+    double* a1 = domain->lattice->a1;
+    double* a2 = domain->lattice->a2;
+    double* a3 = domain->lattice->a3;
+    double scale[3];
+    scale[0] = domain->lattice->xlattice;
+    scale[1] = domain->lattice->ylattice;
+    scale[2] = domain->lattice->zlattice;
+    for (int coord = 0; coord < 3; coord++)
+    {
+      a1[coord] *= scale[coord];
+      a2[coord] *= scale[coord];
+      a3[coord] *= scale[coord];
+    }
     double cross23[3], cross31[3], cross12[3];
-
     // a2 x a3
     cross23[0] = a2[1]*a3[2] - a2[2]*a3[1];
     cross23[1] = a2[2]*a3[0] - a2[0]*a3[2];
@@ -312,7 +335,6 @@ void ComputeMagnon::calculate_reciprocal()
         a1[0]*cross23[0] +
         a1[1]*cross23[1] +
         a1[2]*cross23[2];
-
     double factor = 2.0 * M_PI / V;
 
     for (int i=0;i<3;i++) {
