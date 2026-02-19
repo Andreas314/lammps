@@ -151,7 +151,7 @@ void ComputeMagnon::write_result()
 	      S += (S_real[coord][om][k] * S_real[coord][om][k] + 
 	           S_imag[coord][om][k] * S_imag[coord][om][k]);
       }
-      fprintf(fp, "%f,", std::sqrt(S));
+      fprintf(fp, "%.5e,", std::sqrt(S));
     }
     fprintf(fp, "\n");
   }
@@ -186,14 +186,11 @@ void ComputeMagnon::compute_array()
     }
   }
   //CALCULATE THE TENSOR
-  for (int k = 0; k < knum * (pointsnum - 1); k++)
-  {
-    printf("%d\n", k);
     for (int comp = 0; comp < 3; comp++)
     {
-      calculate_S_entry(k, comp);
+      printf("%d\n", comp);
+      calculate_S_entry(comp);
     }
-  }
   //NORMALIZE
   for (int k = 0; k < knum * (pointsnum - 1); k++)
   {
@@ -201,8 +198,8 @@ void ComputeMagnon::compute_array()
     {
       for (int omega = 0; omega < nomegas; omega++)
       {
-        S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nlocal);
-        S_imag[comp][omega][k] /= (std::sqrt(2 * M_PI) * atom->nlocal);
+        S_real[comp][omega][k] /= (std::sqrt(2 * M_PI) * (atom->nlocal));
+        S_imag[comp][omega][k] /= (std::sqrt(2 * M_PI) * (atom->nlocal));
       }
     }
   }
@@ -221,7 +218,7 @@ void ComputeMagnon::compute_array()
   if (comm->me == 0) write_result();
 }
 
-void ComputeMagnon::calculate_S_entry(int k, int comp)
+void ComputeMagnon::calculate_S_entry(int comp)
 {
   std::complex<double> I{0.0, 1.0};
   for (int i = 0; i < atom->nlocal; i++)
@@ -232,27 +229,35 @@ void ComputeMagnon::calculate_S_entry(int k, int comp)
       compute_C(i, j, comp);
       //transform the correletation function to frequency domain
       transform_C();
-      double* qnounits = kvecs[k];
-      double x, q, sum = 0;
-      //calculation of sums over distances of atoms
-      //this is x \dot q
-      for (int xx = 0; xx < 3; xx++)
+      for (int k = 0; k < knum * (pointsnum - 1); k++)
       {
-        x = atom->x[i][xx] - atom->x[j][xx];
-	q = qnounits[0] * b1[xx];
-	q += qnounits[1] * b2[xx];
-	q += qnounits[2] * b3[xx];
-	sum += x * q;
-      }
-      //factor inside the sum
-      std::complex<double> z;
-      z = (std::exp(I * sum));
-      //accumulation of sum
-      for (int omega = 0; omega < nomegas; omega++)
+        double* qnounits = kvecs[k];
+        double x, sum = 0;
+        double q[3];
+        for (int xx = 0; xx < 3; xx++)
         {
-          S_real[comp][omega][k] += (z.real() * C_omega_real[omega] - z.imag() * C_omega_imag[omega]);
-          S_imag[comp][omega][k] += z.real() * C_omega_imag[omega] + z.imag() * C_omega_real[omega];
-	}
+  	q[xx] = qnounits[0] * b1[xx];
+  	q[xx] += qnounits[1] * b2[xx];
+  	q[xx] += qnounits[2] * b3[xx];
+        }
+        
+        //calculation of sums over distances of atoms
+        //this is x \dot q
+        for (int xx = 0; xx < 3; xx++)
+        {
+          x = atom->x[i][xx] - atom->x[j][xx];
+  	sum += x * q[xx];
+        }
+        //factor inside the sum
+        std::complex<double> z;
+        z = (std::exp(I * sum));
+        //accumulation of sum
+        for (int omega = 0; omega < nomegas; omega++)
+          {
+            S_real[comp][omega][k] += (z.real() * C_omega_real[omega] - z.imag() * C_omega_imag[omega]);
+            S_imag[comp][omega][k] += z.real() * C_omega_imag[omega] + z.imag() * C_omega_real[omega];
+  	}
+      }
     }
   }
   //normalization
@@ -301,18 +306,16 @@ void ComputeMagnon::calculate_reciprocal()
     
     //TODO:Cooking of ChatGPT, check if correct
     //Calculates reciprocal vectors, because LAMMPS doesnt store them
-    double* a1 = domain->lattice->a1;
-    double* a2 = domain->lattice->a2;
-    double* a3 = domain->lattice->a3;
+    double a1[3], a2[3], a3[3];
     double scale[3];
     scale[0] = domain->lattice->xlattice;
     scale[1] = domain->lattice->ylattice;
     scale[2] = domain->lattice->zlattice;
     for (int coord = 0; coord < 3; coord++)
     {
-      a1[coord] *= scale[coord];
-      a2[coord] *= scale[coord];
-      a3[coord] *= scale[coord];
+      a1[coord] = domain->lattice->a1[coord] * scale[coord];
+      a2[coord] = domain->lattice->a2[coord] * scale[coord];
+      a3[coord] = domain->lattice->a3[coord] * scale[coord];
     }
     double cross23[3], cross31[3], cross12[3];
     // a2 x a3
